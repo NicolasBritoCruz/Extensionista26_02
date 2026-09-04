@@ -1,0 +1,7 @@
+# Visao computacional e modelo de pose
+ultralytics>=8.3.0
+opencv-python>=4.10.0
+numpy>=1.26.0
+
+# Servidor web (opcional: necessario apenas para server.py)
+Flask>=3.0.0
