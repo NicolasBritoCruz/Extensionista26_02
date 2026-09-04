@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Configuracao especifica da maquina (cada instalacao tem a sua)
+settings_local.json
+
+# Zonas desenhadas na interface web
+zones.json
+
+# Pesos do modelo: baixados na primeira execucao, nao versionar
+*.pt
+*.onnx
+*.engine
+*_openvino_model/
+models/
+
+# Saidas de processamento
+*_epi.mp4
+output/
+runs/
+
+# Material de origem que pode conter pessoas ou ambientes privados
+input/
+raw/
+
+# IDE e sistema operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
