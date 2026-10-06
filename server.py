@@ -238,7 +238,8 @@ def _load_model():
         print("Carregando modelo (a primeira execucao baixa os pesos)...")
         started = time.time()
         _detector = EPIDetector()
-        print(f"Modelo pronto em {time.time() - started:.1f}s")
+        print(f"Modelo pronto em {time.time() - started:.1f}s "
+              f"(EPI por {_detector.method})")
     except Exception as exc:
         print(f"Falha ao carregar o modelo: {exc}", file=sys.stderr)
     finally:

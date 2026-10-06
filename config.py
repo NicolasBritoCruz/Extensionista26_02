@@ -66,6 +66,32 @@ VEST_THRESH = 0.09
 # 0.00 depois de excluir pele e cabelo. O corte em 0.24 separa com folga.
 HELMET_THRESH = 0.24
 
+# ── modelo treinado de EPI ────────────────────────────────────────────────────
+# Metodo de decisao do colete e do capacete:
+#   "cor"    analise de cor e forma nos recortes da pose (metodo original)
+#   "modelo" detector YOLO treinado para EPI (ver treino/treinar_epi.ipynb)
+#   "clip"   CLIP pre-treinado classifica os recortes de cabeca e tronco
+#            (capacete x bone x nada; colete x roupa), sem treino
+#   "auto"   clip se o open_clip estiver instalado; senao o modelo, se o
+#            arquivo de pesos existir; senao cor
+# Em teste ao vivo o clip foi o unico que separou bone de capacete de forma
+# consistente, inclusive trocando de ambiente, por isso e o preferido.
+# A analise de cor confunde bone liso com capacete e camiseta laranja com
+# colete; um modelo treinado com esses casos como negativos separa os dois.
+EPI_METHOD = os.getenv("EPI_METHOD", "auto")
+PPE_MODEL_PATH = os.getenv("EPI_PPE_MODEL", str(ROOT / "models" / "epi.pt"))
+PPE_CONF = 0.35
+PPE_IMGSZ = 640
+
+# CLIP: ViT-B/32 com os pesos da OpenAI (~350 MB, baixados na primeira
+# execucao). A variante quickgelu e a que corresponde a esses pesos.
+CLIP_MODEL = "ViT-B-32-quickgelu"
+CLIP_PRETRAINED = "openai"
+
+# Fracao da caixa do EPI que precisa cair dentro da regiao da pessoa
+# (cabeca para capacete, tronco para colete) para ser atribuida a ela.
+PPE_MIN_OVERLAP = 0.40
+
 # ── estabilizacao temporal ────────────────────────────────────────────────────
 # Voto de maioria numa janela de frames evita que o rotulo pisque quando a
 # pessoa cruza sombra ou vira de lado.
@@ -102,6 +128,8 @@ _OVERRIDABLE = {
     "INPUT_SIZE", "INPUT_SIZE_NEAR", "NEAR_SCENE_RATIO",
     "CONF_THRESH", "MAX_ASPECT", "MIN_KEYPOINTS", "KEYPOINT_MIN_CONF",
     "VEST_THRESH", "HELMET_THRESH",
+    "EPI_METHOD", "PPE_MODEL_PATH", "PPE_CONF", "PPE_IMGSZ", "PPE_MIN_OVERLAP",
+    "CLIP_MODEL", "CLIP_PRETRAINED",
     "STABILIZE_WINDOW", "STABILIZE_RATIO", "TRACK_IOU", "TRACK_MAX_MISSING",
     "SYSTEM_TITLE", "SIDEBAR_WIDTH", "SHOW_ANALYSIS_ZONES",
     "HOST", "PORT", "STREAM_FPS", "JPEG_QUALITY",

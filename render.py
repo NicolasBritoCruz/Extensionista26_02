@@ -132,6 +132,7 @@ def main() -> int:
               f"-> imgsz={imgsz} ({scene})")
     else:
         print(f"Cena  : imgsz={imgsz} ({scene})")
+    print(f"EPI   : {detector.method}")
     print(f"Saida : {dst}")
 
     # o painel vai AO LADO do video, nao sobre ele: nada do quadro

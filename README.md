@@ -394,6 +394,63 @@ projeto com apenas as chaves que quiser mudar:
 Esse arquivo é ignorado pelo git, então atualizar o projeto nunca sobrescreve
 o seu ajuste local.
 
+### CLIP: capacete, boné ou nada
+
+O método padrão. A pose recorta a cabeça e o tronco, e o
+[CLIP](https://github.com/mlfoundations/open_clip), um modelo
+pré-treinado em centenas de milhões de pares imagem-texto, compara cada
+recorte com descrições em texto:
+
+| Recorte | Opções | Conta como EPI |
+|---|---|---|
+| Cabeça | capacete de obra, boné/chapéu/touca, nada | só capacete |
+| Tronco | colete refletivo, roupa comum | só colete |
+
+Não precisa de treino. O detector YOLO treinado com poucos dados acertava
+nas condições do treino e errava ao mudar a luz ou o ambiente, sempre
+confundindo boné com capacete; o CLIP já viu essa variedade.
+
+Os pesos (~350 MB) são baixados na primeira execução. Roda a cerca de
+5 a 6 quadros por segundo em CPU. Ponto fraco conhecido: cabeças muito
+pequenas (pessoas longe da câmera) têm pouco detalhe para ele decidir.
+
+### Modelo treinado de EPI
+
+A análise de cor confunde boné liso com capacete e camiseta laranja com
+colete. Como alternativa, o projeto aceita um detector YOLO treinado para
+EPI. A pose continua localizando cabeça e tronco; o modelo decide se há
+capacete e colete, e cada caixa só é creditada à pessoa se cair na região
+certa do corpo.
+
+1. Abra [`treino/treinar_epi.ipynb`](treino/treinar_epi.ipynb) no Google
+   Colab com GPU e siga as instruções da primeira célula.
+2. Copie o `epi.pt` baixado para `models/epi.pt`.
+3. Rode normalmente. O terminal mostra `Metodo de EPI: modelo`.
+
+| Parâmetro | Padrão | O que significa |
+|---|---|---|
+| `EPI_METHOD` | `auto` | `clip`, `modelo`, `cor` ou `auto` (clip se instalado; senão modelo, se `models/epi.pt` existir; senão cor) |
+| `PPE_MODEL_PATH` | `models/epi.pt` | Pesos do modelo de EPI |
+| `PPE_CONF` | 0.35 | Confiança mínima de cada caixa de EPI |
+| `PPE_MIN_OVERLAP` | 0.40 | Fração da caixa que precisa cair na cabeça ou no tronco |
+
+Os nomes de classe são lidos do modelo, então `Hardhat`/`NO-Hardhat`,
+`helmet`/`head` e `Safety Vest`/`NO-Safety Vest` funcionam sem ajuste.
+
+**Rotulando vídeos próprios.** Num vídeo gravado para treino, em que o EPI
+não muda (todo de boné, todo sem colete), a pose desenha as caixas de
+cabeça e tronco sozinha:
+
+```bash
+python treino/autorrotular.py bone_azul.mp4 --cabeca sem-capacete --tronco sem-colete
+```
+
+A saída em `rotulos/<video>/` já está no formato YOLO para subir no
+Roboflow; a pasta `conferir/` mostra as caixas para revisão. Quadros com
+número de pessoas diferente de `--pessoas` ou com os ombros fora do quadro
+são descartados, porque um tronco sem rótulo ensina ao modelo que tronco
+sem colete é fundo.
+
 ---
 
 ## Desempenho

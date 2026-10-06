@@ -25,7 +25,9 @@ o recorte para poucos pixels de altura quando a estimativa errava.
 
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -291,12 +293,132 @@ def helmet_coverage(frame, roi) -> float:
     return best
 
 
+def ppe_label(name: str) -> str | None:
+    """Normaliza o nome de classe do modelo de EPI para um de quatro rotulos.
+
+    Compara por nome, nao por indice: o Roboflow reordena as classes a cada
+    versao exportada, e datasets diferentes chamam a mesma coisa de jeitos
+    diferentes ("Hardhat", "helmet", "NO-Safety Vest", "no_vest", "head").
+    Devolve "helmet", "no_helmet", "vest", "no_vest" ou None (classe ignorada).
+    """
+    n = name.strip().lower().replace("_", "-").replace(" ", "-")
+    if n == "head":  # Hard Hat Workers: cabeca descoberta
+        return "no_helmet"
+    negative = False
+    for prefix in ("no-", "without-", "no"):
+        if n.startswith(prefix):
+            n, negative = n[len(prefix):], True
+            break
+    if any(word in n for word in ("hardhat", "hard-hat", "helmet")):
+        return "no_helmet" if negative else "helmet"
+    if "vest" in n:
+        return "no_vest" if negative else "vest"
+    return None
+
+
+def head_region(box, kps, frame_w: int, frame_h: int):
+    """Regiao folgada em volta da cabeca para atribuir caixas de capacete.
+
+    Mais larga que helmet_roi porque a caixa do modelo de EPI cobre a aba
+    do capacete e as vezes sobe um pouco acima da caixa da pessoa.
+    """
+    cx, half_w, top, chin = head_geometry(box, kps)
+    span = max(chin - top, 8.0)
+    return (max(0, int(cx - half_w * 1.4)), max(0, int(top - span * 0.6)),
+            min(frame_w - 1, int(cx + half_w * 1.4)),
+            min(frame_h - 1, int(chin + span * 0.2)))
+
+
+def _overlap(inner, outer) -> float:
+    """Fracao da caixa inner que cai dentro de outer."""
+    ix1, iy1, ix2, iy2 = inner
+    ox1, oy1, ox2, oy2 = outer
+    inter = (max(0, min(ix2, ox2) - max(ix1, ox1)) *
+             max(0, min(iy2, oy2) - max(iy1, oy1)))
+    area = (ix2 - ix1) * (iy2 - iy1)
+    return inter / area if area > 0 else 0.0
+
+
+def assign_ppe(dets: list[Detection], ppe: list[tuple[str, tuple, float]],
+               frame_w: int, frame_h: int) -> list[Detection]:
+    """Atribui cada caixa de EPI a pessoa certa e decide colete e capacete.
+
+    A pose continua decidindo onde cada EPI deve estar: capacete conta so
+    se cair na cabeca, colete so se cair no tronco. Sem isso o capacete de
+    quem esta atras seria creditado a quem esta na frente.
+
+    Quando o modelo ve o positivo e o negativo na mesma pessoa, vence o de
+    maior confianca. Sem nenhuma deteccao o veredito e ausente: num painel
+    de seguranca, falso alarme e preferivel a violacao escondida.
+    """
+    regions = [(head_region(d.box, d.keypoints, frame_w, frame_h),
+                d.vest_roi or d.box) for d in dets]
+    best = [{"helmet": 0.0, "no_helmet": 0.0, "vest": 0.0, "no_vest": 0.0}
+            for _ in dets]
+
+    for label, box, conf in ppe:
+        slot = 0 if label in ("helmet", "no_helmet") else 1
+        scores = [_overlap(box, region[slot]) for region in regions]
+        if not scores:
+            break
+        owner = int(np.argmax(scores))
+        if scores[owner] >= config.PPE_MIN_OVERLAP:
+            best[owner][label] = max(best[owner][label], conf)
+
+    for det, b in zip(dets, best, strict=True):
+        det.helmet_score, det.vest_score = b["helmet"], b["vest"]
+        det.has_helmet = b["helmet"] > b["no_helmet"]
+        det.has_vest = b["vest"] > b["no_vest"]
+    return dets
+
+
+def resolve_method() -> str:
+    """Decide entre "cor", "modelo" e "clip" a partir de config.EPI_METHOD."""
+    method = str(config.EPI_METHOD).lower()
+    if method == "clip":
+        return "clip"
+    exists = Path(config.PPE_MODEL_PATH).exists()
+    if method == "modelo" and not exists:
+        raise FileNotFoundError(
+            f"EPI_METHOD=modelo, mas os pesos nao foram encontrados em "
+            f"{config.PPE_MODEL_PATH}. Treine com treino/treinar_epi.ipynb "
+            f"e copie o best.pt para esse caminho.")
+    if method == "auto":
+        if importlib.util.find_spec("open_clip") is not None:
+            return "clip"
+        return "modelo" if exists else "cor"
+    return "modelo" if method == "modelo" else "cor"
+
+
 class EPIDetector:
     """Envolve o YOLO e a analise de EPI numa chamada por frame."""
 
     def __init__(self, model_path: str | None = None, imgsz: int | None = None):
         self.model = YOLO(model_path or config.MODEL_PATH)
         self.imgsz = imgsz or config.INPUT_SIZE
+        self.method = resolve_method()
+        self.ppe_model = (YOLO(config.PPE_MODEL_PATH)
+                          if self.method == "modelo" else None)
+        self.clip = None
+        if self.method == "clip":
+            from core.clip_epi import ClipEPI
+            self.clip = ClipEPI()
+
+    def _detect_ppe(self, frame) -> list[tuple[str, tuple, float]]:
+        """Roda o modelo de EPI e devolve (rotulo, caixa, confianca)."""
+        result = self.ppe_model(frame, conf=config.PPE_CONF,
+                                imgsz=config.PPE_IMGSZ, verbose=False)[0]
+        if result.boxes is None or not len(result.boxes):
+            return []
+        names = result.names
+        found = []
+        for cls, box, conf in zip(result.boxes.cls.cpu().numpy(),
+                                  result.boxes.xyxy.cpu().numpy(),
+                                  result.boxes.conf.cpu().numpy(), strict=True):
+            label = ppe_label(names[int(cls)])
+            if label:
+                found.append((label, tuple(int(v) for v in box), float(conf)))
+        return found
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
         h, w = frame.shape[:2]
@@ -344,20 +466,23 @@ class EPIDetector:
                     continue
 
             box = (x1, y1, x2, y2)
-            v_roi = vest_roi(box, kps, w, h)
-            h_roi = helmet_roi(box, kps, w, h)
-            v_score = vest_coverage(frame, v_roi)
-            h_score = helmet_coverage(frame, h_roi)
+            det = Detection(box=box, keypoints=kps, confidence=float(confs[i]),
+                            vest_roi=vest_roi(box, kps, w, h),
+                            helmet_roi=helmet_roi(box, kps, w, h))
+            if self.method == "cor":
+                det.vest_score = vest_coverage(frame, det.vest_roi)
+                det.helmet_score = helmet_coverage(frame, det.helmet_roi)
+                det.has_vest = det.vest_score >= config.VEST_THRESH
+                det.has_helmet = det.helmet_score >= config.HELMET_THRESH
+            found.append(det)
 
-            found.append(Detection(
-                box=box, keypoints=kps, confidence=float(confs[i]),
-                has_vest=v_score >= config.VEST_THRESH,
-                has_helmet=h_score >= config.HELMET_THRESH,
-                vest_score=v_score, helmet_score=h_score,
-                vest_roi=v_roi, helmet_roi=h_roi,
-            ))
-
-        return _drop_duplicates(found)
+        found = _drop_duplicates(found)
+        if self.method == "modelo" and found:
+            assign_ppe(found, self._detect_ppe(frame), w, h)
+        elif self.method == "clip" and found:
+            heads = [head_region(d.box, d.keypoints, w, h) for d in found]
+            self.clip.assign(frame, found, heads)
+        return found
 
 
 def _drop_duplicates(dets: list[Detection]) -> list[Detection]:

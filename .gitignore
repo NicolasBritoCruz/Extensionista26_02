@@ -35,3 +35,6 @@ raw/
 .DS_Store
 Thumbs.db
 *.log
+
+# Rotulos gerados por treino/autorrotular.py (contem imagens de pessoas)
+rotulos/

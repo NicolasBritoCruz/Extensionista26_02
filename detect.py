@@ -71,6 +71,7 @@ def main() -> int:
     print("Carregando modelo (a primeira execucao baixa os pesos)...")
     detector = EPIDetector(imgsz=args.imgsz)
     tracker = Tracker()
+    print(f"Metodo de EPI: {detector.method}")
 
     window = "EPI Detect  |  Q para sair"
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
