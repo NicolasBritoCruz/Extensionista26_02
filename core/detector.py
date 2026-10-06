@@ -384,6 +384,18 @@ def assign_ppe(dets: list[Detection], ppe: list[tuple[str, tuple, float]],
     return dets
 
 
+def fit_input_size(imgsz: int, frame_w: int, frame_h: int) -> int:
+    """Resolucao da pose, sem ampliar o quadro alem do tamanho real.
+
+    O padrao de 1280 e para camera de galpao em alta resolucao. Numa
+    webcam de 640x480 ele ampliava a imagem 2x antes da pose: nenhum
+    detalhe a mais e 166 ms por quadro em vez de 48 ms. Multiplo de 32,
+    que e o passo do YOLO.
+    """
+    longest = max(frame_w, frame_h)
+    return min(imgsz, -(-longest // 32) * 32)
+
+
 def resolve_method() -> str:
     """Decide entre "cor", "modelo" e "clip" a partir de config.EPI_METHOD."""
     method = str(config.EPI_METHOD).lower()
@@ -435,7 +447,7 @@ class EPIDetector:
     def detect(self, frame: np.ndarray) -> list[Detection]:
         h, w = frame.shape[:2]
         result = self.model(frame, conf=config.CONF_THRESH,
-                            imgsz=self.imgsz, verbose=False)[0]
+                            imgsz=fit_input_size(self.imgsz, w, h), verbose=False)[0]
 
         if result.boxes is None or not len(result.boxes):
             return []

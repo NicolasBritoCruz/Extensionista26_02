@@ -9,7 +9,7 @@ colapsava o recorte para poucos pixels de altura.
 """
 
 import config
-from core.detector import head_geometry, helmet_roi, vest_roi
+from core.detector import fit_input_size, head_geometry, helmet_roi, vest_roi
 
 # pose sintetica de uma pessoa em pe, de frente, caixa (100, 50)-(180, 300)
 BOX = (100, 50, 180, 300)
@@ -88,3 +88,11 @@ def test_limites_de_config_sao_coerentes():
     # medido em video real: com capacete >= 0.29, sem capacete = 0.00
     assert config.HELMET_THRESH < 0.29, "corte acima do minimo medido"
     assert config.MAX_ASPECT > 1.0, "pessoa sentada e mais larga que alta"
+
+
+def test_pose_nao_amplia_alem_do_quadro():
+    """Webcam 640x480 com padrao 1280: ampliar so custa tempo."""
+    assert fit_input_size(1280, 640, 480) == 640
+    assert fit_input_size(1280, 1920, 1080) == 1280
+    assert fit_input_size(768, 850, 478) == 768
+    assert fit_input_size(1280, 850, 478) == 864  # arredonda para cima, multiplo de 32

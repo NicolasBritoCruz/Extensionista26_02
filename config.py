@@ -100,6 +100,11 @@ CLIP_MIN_HEAD_PX = 50
 CLIP_MIN_TORSO_PX = 0
 CLIP_MIN_MARGIN = 0.15
 
+# Cada pessoa e reclassificada pelo CLIP a cada N quadros; nos intervalos o
+# veredito anterior e reaproveitado. O CLIP custava mais que a pose (cerca
+# de 60 ms por recorte contra 50 ms da pose, em CPU). 1 desliga o cache.
+CLIP_EVERY = 4
+
 # Fracao da caixa do EPI que precisa cair dentro da regiao da pessoa
 # (cabeca para capacete, tronco para colete) para ser atribuida a ela.
 PPE_MIN_OVERLAP = 0.40
@@ -142,7 +147,7 @@ _OVERRIDABLE = {
     "VEST_THRESH", "HELMET_THRESH",
     "EPI_METHOD", "PPE_MODEL_PATH", "PPE_CONF", "PPE_IMGSZ", "PPE_MIN_OVERLAP",
     "CLIP_MODEL", "CLIP_PRETRAINED",
-    "CLIP_MIN_HEAD_PX", "CLIP_MIN_TORSO_PX", "CLIP_MIN_MARGIN",
+    "CLIP_MIN_HEAD_PX", "CLIP_MIN_TORSO_PX", "CLIP_MIN_MARGIN", "CLIP_EVERY",
     "STABILIZE_WINDOW", "STABILIZE_RATIO", "TRACK_IOU", "TRACK_MAX_MISSING",
     "SYSTEM_TITLE", "SIDEBAR_WIDTH", "SHOW_ANALYSIS_ZONES",
     "HOST", "PORT", "STREAM_FPS", "JPEG_QUALITY",

@@ -130,6 +130,9 @@ def main() -> int:
     args = parse_args()
     if args.metodo:
         config.EPI_METHOD = args.metodo
+    # imagens independentes: o veredito de uma nao pode ser reaproveitado
+    # na seguinte so porque a pessoa esta na mesma posicao
+    config.CLIP_EVERY = 1
     from core.detector import EPIDetector
     detector = EPIDetector(imgsz=args.imgsz)
     print(f"Metodo de EPI: {detector.method}\n")
