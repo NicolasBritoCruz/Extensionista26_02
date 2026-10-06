@@ -38,3 +38,6 @@ Thumbs.db
 
 # Rotulos gerados por treino/autorrotular.py (contem imagens de pessoas)
 rotulos/
+
+# Conjuntos de teste (contem imagens de pessoas)
+teste/

@@ -56,14 +56,21 @@ HELMET_HUES = ((3, 32), (25, 42), (45, 88), (92, 132), (0, 7), (172, 180))
 
 @dataclass
 class Detection:
-    """Uma pessoa detectada e o veredito de cada EPI."""
+    """Uma pessoa detectada e o veredito de cada EPI.
+
+    has_vest e has_helmet sao True (tem), False (nao tem) ou None (nao
+    avaliado: pessoa pequena demais ou classificador em duvida). None nunca
+    conta como violacao; num sistema de seguranca, dizer "nao sei" e
+    melhor que chutar. Cuidado: `not None` e True, entao compare com
+    `is False` onde a intencao for "violacao".
+    """
 
     box: tuple[int, int, int, int]
     keypoints: list[tuple[float, float, float]] | None = None
     confidence: float = 0.0
 
-    has_vest: bool = False
-    has_helmet: bool = False
+    has_vest: bool | None = False
+    has_helmet: bool | None = False
     vest_score: float = 0.0
     helmet_score: float = 0.0
 
@@ -76,8 +83,13 @@ class Detection:
 
     @property
     def compliant(self) -> bool:
-        """Conformidade exige as duas pecas."""
-        return self.has_vest and self.has_helmet
+        """Conformidade exige as duas pecas confirmadas."""
+        return self.has_vest is True and self.has_helmet is True
+
+    @property
+    def violating(self) -> bool:
+        """Falta ao menos uma peca, com certeza (nao avaliado nao conta)."""
+        return self.has_vest is False or self.has_helmet is False
 
 
 def keypoint(kps, index: int, min_conf: float | None = None):

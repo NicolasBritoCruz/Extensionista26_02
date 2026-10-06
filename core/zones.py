@@ -58,9 +58,9 @@ def person_zone_violations(detection, zones: list, frame_w: int, frame_h: int) -
         if cv2.pointPolygonTest(pts, (float(cx), float(cy)), False) >= 0:
             missing = []
             requires = zone.get("requires", [])
-            if "vest" in requires and not detection.has_vest:
+            if "vest" in requires and detection.has_vest is False:
                 missing.append("COLETE")
-            if "helmet" in requires and not getattr(detection, "has_helmet", False):
+            if "helmet" in requires and getattr(detection, "has_helmet", None) is False:
                 missing.append("CAPACETE")
             if missing:
                 violations.append({**zone, "missing": missing})

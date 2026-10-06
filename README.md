@@ -411,8 +411,14 @@ nas condições do treino e errava ao mudar a luz ou o ambiente, sempre
 confundindo boné com capacete; o CLIP já viu essa variedade.
 
 Os pesos (~350 MB) são baixados na primeira execução. Roda a cerca de
-5 a 6 quadros por segundo em CPU. Ponto fraco conhecido: cabeças muito
-pequenas (pessoas longe da câmera) têm pouco detalhe para ele decidir.
+5 a 6 quadros por segundo em CPU.
+
+**Não avaliado.** Quando a cabeça é pequena demais (pessoa longe da
+câmera) ou o CLIP fica indeciso entre duas opções, o EPI aparece em cinza
+com `?` em vez de virar um chute. Não avaliado não conta como violação nem
+como conformidade, e fica fora do percentual do painel. Os limites
+(`CLIP_MIN_HEAD_PX`, `CLIP_MIN_TORSO_PX`, `CLIP_MIN_MARGIN`) foram
+escolhidos medindo com `treino/avaliar.py`.
 
 ### Modelo treinado de EPI
 

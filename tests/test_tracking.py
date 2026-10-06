@@ -8,7 +8,7 @@ so deve trocar o veredito quando a mudanca persiste.
 
 import config
 from core.detector import Detection
-from core.tracker import Tracker, iou, summarize
+from core.tracker import Tracker, compliance, iou, summarize
 
 
 def make(box, vest=True, helmet=True, conf=0.9):
@@ -80,4 +80,41 @@ def test_resumo_conta_violacao_parcial_em_separado():
         make((0, 0, 1, 1), vest=True, helmet=False),
         make((0, 0, 1, 1), vest=False, helmet=True),
     ])
-    assert counts == {"ok": 1, "no_vest": 1, "no_helmet": 1, "total": 3}
+    assert counts == {"ok": 1, "no_vest": 1, "no_helmet": 1, "unknown": 0, "total": 3}
+
+
+def test_nao_avaliado_nao_conta_como_violacao():
+    """None e "nao sei": nem conforme, nem violacao."""
+    person = make((0, 0, 1, 1), vest=True, helmet=None)
+    assert not person.compliant
+    assert not person.violating
+    counts = summarize([person, make((0, 0, 1, 1), vest=True, helmet=True)])
+    assert counts["no_helmet"] == 0
+    assert counts["unknown"] == 1
+    assert compliance(counts) == 100  # o nao avaliado fica fora da conta
+
+
+def test_conformidade_sem_ninguem_avaliavel_e_none():
+    assert compliance(summarize([make((0, 0, 1, 1), vest=None, helmet=None)])) is None
+
+
+def test_nao_avaliado_nao_apaga_veredito_de_um_quadro():
+    """Um quadro em duvida no meio de leituras firmes nao muda nada."""
+    tracker = Tracker()
+    box = (100, 100, 150, 300)
+    for _ in range(config.STABILIZE_WINDOW - 1):
+        tracker.update([make(box, helmet=False)])
+    result = tracker.update([make(box, helmet=None)])[0]
+    assert result.has_helmet is False
+    assert result.violation_frames > 0
+
+
+def test_maioria_nao_avaliada_vira_nao_avaliado():
+    """Quem se afasta da camera nao herda o veredito de quando estava perto."""
+    tracker = Tracker()
+    box = (100, 100, 150, 300)
+    tracker.update([make(box, helmet=False)])
+    for _ in range(config.STABILIZE_WINDOW):
+        result = tracker.update([make(box, helmet=None)])[0]
+    assert result.has_helmet is None
+    assert result.violation_frames == 0

@@ -25,6 +25,7 @@ import cv2
 import numpy as np
 
 import config
+from core.tracker import compliance
 
 # BGR
 GREEN = (34, 197, 94)
@@ -136,6 +137,19 @@ def draw_label(img, text, x, y, background, text_color=BLACK, size: float = 0.40
     cv2.putText(img, text, (x + pad, y), FONT, size, text_color, 1, cv2.LINE_AA)
 
 
+def _state(value, ok_color):
+    """Cor de fundo e de texto para tem (True), falta (False), nao avaliado (None)."""
+    if value is None:
+        return NEUTRAL, WHITE
+    return (ok_color, BLACK) if value else (RED, WHITE)
+
+
+def _label(name: str, value, suffix: str) -> str:
+    if value is None:
+        return f"{name} ?"
+    return f"{name} OK" if value else f"SEM {name}{suffix}"
+
+
 def draw_detections(img, detections, fps: float, video_width: int):
     """Desenha zonas de analise, esqueleto, caixa e rotulos de cada pessoa."""
     for det in detections:
@@ -143,9 +157,9 @@ def draw_detections(img, detections, fps: float, video_width: int):
         if x1 >= video_width - 8:  # coberta pelo painel lateral
             continue
 
-        head_color = YELLOW if det.has_helmet else RED
-        torso_color = GREEN if det.has_vest else RED
-        box_color = GREEN if det.compliant else RED
+        head_color, head_text = _state(det.has_helmet, YELLOW)
+        torso_color, torso_text = _state(det.has_vest, GREEN)
+        box_color = GREEN if det.compliant else RED if det.violating else NEUTRAL
         scale = float(np.clip((y2 - y1) / 220.0, 0.7, 2.2))
 
         if config.SHOW_ANALYSIS_ZONES:
@@ -154,7 +168,7 @@ def draw_detections(img, detections, fps: float, video_width: int):
             if det.helmet_roi:
                 draw_dashed_box(img, det.helmet_roi, head_color)
 
-        if not det.has_helmet and det.helmet_roi:
+        if det.has_helmet is False and det.helmet_roi:
             draw_missing_helmet(img, det.helmet_roi, scale)
 
         draw_skeleton(img, det.keypoints, head_color, torso_color, scale)
@@ -163,19 +177,17 @@ def draw_detections(img, detections, fps: float, video_width: int):
         # rotulos acima da cabeca; a marca de capacete ausente ocupa a
         # faixa logo acima do recorte, entao o texto sobe um pouco mais
         roi = det.helmet_roi or (x1, y1, x2, y2)
-        gap = int((roi[3] - roi[1]) * 0.9) + 14 if not det.has_helmet else 8
+        gap = int((roi[3] - roi[1]) * 0.9) + 14 if det.has_helmet is False else 8
         lx = int(np.clip(roi[0] - 4, 4, video_width - 136))
         ly = max(62, roi[1] - gap)
 
         seconds = det.violation_frames / max(fps, 1.0)
         suffix = f"  {seconds:.0f}s" if seconds >= 1.0 else ""
 
-        draw_label(img, "CAPACETE OK" if det.has_helmet else "SEM CAPACETE" + suffix,
-                   lx, ly - 21, YELLOW if det.has_helmet else RED,
-                   BLACK if det.has_helmet else WHITE)
-        draw_label(img, "COLETE OK" if det.has_vest else "SEM COLETE" + suffix,
-                   lx, ly, GREEN if det.has_vest else RED,
-                   BLACK if det.has_vest else WHITE)
+        draw_label(img, _label("CAPACETE", det.has_helmet, suffix),
+                   lx, ly - 21, head_color, head_text)
+        draw_label(img, _label("COLETE", det.has_vest, suffix),
+                   lx, ly, torso_color, torso_text)
 
 
 def draw_header(img, camera_name: str, clock: str, progress: float = 0.0):
@@ -228,20 +240,25 @@ def draw_sidebar(img, counts, fps: float, pulse: float = 0.0):
                     color if value else (58, 68, 80), 2, cv2.LINE_AA)
         cv2.putText(img, label, (x + 46, y - 6), FONT, 0.34,
                     (140, 158, 175), 1, cv2.LINE_AA)
+        if label == "TOTAL" and counts.get("unknown"):
+            # sem linha propria: o painel nao cabe mais uma em 480 px
+            cv2.putText(img, f"{counts['unknown']} nao avaliado(s)", (x + 46, y + 8),
+                        FONT, 0.30, NEUTRAL, 1, cv2.LINE_AA)
         y += 48
 
     cv2.line(img, (x, y - 14), (w - 16, y - 14), LINE, 1)
 
-    total = counts["total"]
-    percent = int(counts["ok"] / total * 100) if total else 0
-    bar_color = GREEN if percent >= 80 else YELLOW if percent >= 50 else RED
+    percent = compliance(counts)
+    bar_color = (NEUTRAL if percent is None else GREEN if percent >= 80
+                 else YELLOW if percent >= 50 else RED)
     text("CONFORMIDADE", y + 8, (140, 158, 175), 0.34)
-    cv2.putText(img, f"{percent}%", (w - 70, y + 9), FONT, 0.50,
-                bar_color, 1, cv2.LINE_AA)
+    cv2.putText(img, "--" if percent is None else f"{percent}%", (w - 70, y + 9),
+                FONT, 0.50, bar_color, 1, cv2.LINE_AA)
     y += 20
     bar_w = width - 32
     cv2.rectangle(img, (x, y), (x + bar_w, y + 9), (30, 38, 50), -1)
-    cv2.rectangle(img, (x, y), (x + int(bar_w * percent / 100), y + 9), bar_color, -1)
+    cv2.rectangle(img, (x, y), (x + int(bar_w * (percent or 0) / 100), y + 9),
+                  bar_color, -1)
     y += 34
 
     cv2.line(img, (x, y - 14), (w - 16, y - 14), LINE, 1)
@@ -250,7 +267,7 @@ def draw_sidebar(img, counts, fps: float, pulse: float = 0.0):
     for color, label in ((YELLOW, "capacete detectado"),
                          (GREEN, "colete detectado"),
                          (RED, "EPI ausente"),
-                         (NEUTRAL, "nao monitorado")):
+                         (NEUTRAL, "nao avaliado")):
         cv2.line(img, (x, y - 4), (x + 20, y - 4), color, 4, cv2.LINE_AA)
         cv2.putText(img, label, (x + 28, y), FONT, 0.33,
                     (150, 168, 185), 1, cv2.LINE_AA)

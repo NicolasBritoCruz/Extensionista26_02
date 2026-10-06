@@ -45,15 +45,28 @@ class Track:
         self.missing = 0
         self.violation_frames = 0
 
-    def vote(self, has_vest: bool, has_helmet: bool) -> tuple[bool, bool]:
-        """Adiciona a leitura do frame e devolve o veredito estabilizado."""
+    def vote(self, has_vest: bool | None,
+             has_helmet: bool | None) -> tuple[bool | None, bool | None]:
+        """Adiciona a leitura do frame e devolve o veredito estabilizado.
+
+        Leituras None (nao avaliado) ocupam lugar na janela mas nao votam.
+        Se a maioria da janela for None, o veredito tambem e None: uma
+        pessoa que se afastou da camera nao deve herdar para sempre o
+        ultimo veredito de quando estava perto.
+        """
         self.vest.append(has_vest)
         self.helmet.append(has_helmet)
-        ratio = config.STABILIZE_RATIO
-        vest = sum(self.vest) > len(self.vest) * ratio
-        helmet = sum(self.helmet) > len(self.helmet) * ratio
-        self.violation_frames = 0 if (vest and helmet) else self.violation_frames + 1
+        vest, helmet = _majority(self.vest), _majority(self.helmet)
+        violating = vest is False or helmet is False
+        self.violation_frames = self.violation_frames + 1 if violating else 0
         return vest, helmet
+
+
+def _majority(window) -> bool | None:
+    known = [v for v in window if v is not None]
+    if len(known) * 2 < len(window):
+        return None
+    return sum(known) > len(known) * config.STABILIZE_RATIO
 
 
 class Tracker:
@@ -119,13 +132,25 @@ def summarize(detections) -> dict[str, int]:
     (com colete, sem capacete) e o caso mais comum na pratica e sumiria
     num unico contador de conformes.
     """
-    counts = {"ok": 0, "no_vest": 0, "no_helmet": 0, "total": 0}
+    counts = {"ok": 0, "no_vest": 0, "no_helmet": 0, "unknown": 0, "total": 0}
     for det in detections:
         counts["total"] += 1
-        if not det.has_vest:
+        if det.has_vest is False:
             counts["no_vest"] += 1
-        if not det.has_helmet:
+        if det.has_helmet is False:
             counts["no_helmet"] += 1
         if det.compliant:
             counts["ok"] += 1
+        elif not det.violating:
+            counts["unknown"] += 1  # nada faltando com certeza, algo nao avaliado
     return counts
+
+
+def compliance(counts) -> int | None:
+    """Percentual de conformes entre as pessoas que deu para avaliar.
+
+    Quem esta como nao avaliado fica fora da conta: nao e conforme nem
+    violacao. None quando ninguem pode ser avaliado.
+    """
+    judged = counts["total"] - counts["unknown"]
+    return int(counts["ok"] / judged * 100) if judged else None

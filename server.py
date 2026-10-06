@@ -36,7 +36,7 @@ import config
 from core.capture import VideoCapture
 from core.detector import EPIDetector
 from core.overlay import draw_detections, draw_header, draw_live_badge, draw_sidebar, make_canvas
-from core.tracker import Tracker, summarize
+from core.tracker import Tracker, compliance, summarize
 from core.zones import load_zones, next_color, save_zones
 
 app = Flask(__name__)
@@ -77,12 +77,12 @@ class Pipeline:
 
     def stats(self) -> dict:
         with self._lock:
-            total = self._counts["total"]
+            percent = compliance(self._counts)
             return {
                 "camera": self.name,
                 "cam_id": self.cam_id,
                 **self._counts,
-                "compliance": int(self._counts["ok"] / total * 100) if total else 100,
+                "compliance": 100 if percent is None else percent,
                 "det_fps": round(self._det_fps, 1),
                 "stream_fps": round(self._stream_fps, 1),
                 "status": self._status,

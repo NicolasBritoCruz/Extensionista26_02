@@ -116,13 +116,29 @@ class ClipEPI:
         return out
 
     def assign(self, frame: np.ndarray, dets, head_boxes) -> None:
-        """Preenche has_helmet/has_vest e os scores de cada deteccao."""
+        """Preenche has_helmet/has_vest e os scores de cada deteccao.
+
+        O veredito fica None (nao avaliado) quando o recorte e pequeno
+        demais ou quando a classe vencedora ganha por margem estreita. Em
+        teste, os erros se concentravam justamente em cabecas distantes,
+        onde o CLIP tem poucos pixels para decidir.
+        """
+        torso_boxes = [d.vest_roi for d in dets]
         heads = self._classify(frame, head_boxes, self.head)
-        torsos = self._classify(frame, [d.vest_roi for d in dets], self.torso)
-        for det, head, torso in zip(dets, heads, torsos, strict=True):
-            if head:
+        torsos = self._classify(frame, torso_boxes, self.torso)
+        for det, hbox, head, tbox, torso in zip(dets, head_boxes, heads,
+                                                torso_boxes, torsos, strict=True):
+            det.has_helmet = det.has_vest = None
+            if head and _height(hbox) >= config.CLIP_MIN_HEAD_PX:
                 det.helmet_score = head["capacete"]
-                det.has_helmet = max(head, key=head.get) == "capacete"
-            if torso:
+                other = max(v for k, v in head.items() if k != "capacete")
+                if abs(det.helmet_score - other) >= config.CLIP_MIN_MARGIN:
+                    det.has_helmet = det.helmet_score > other
+            if torso and _height(tbox) >= config.CLIP_MIN_TORSO_PX:
                 det.vest_score = torso["colete"]
-                det.has_vest = det.vest_score > torso["roupa"]
+                if abs(det.vest_score - torso["roupa"]) >= config.CLIP_MIN_MARGIN:
+                    det.has_vest = det.vest_score > torso["roupa"]
+
+
+def _height(box) -> int:
+    return box[3] - box[1] if box else 0

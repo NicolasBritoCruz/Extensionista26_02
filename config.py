@@ -88,6 +88,18 @@ PPE_IMGSZ = 640
 CLIP_MODEL = "ViT-B-32-quickgelu"
 CLIP_PRETRAINED = "openai"
 
+# Abaixo destes tamanhos (altura do recorte, em pixels do quadro) ou desta
+# margem entre a classe vencedora e a segunda, o EPI fica "nao avaliado"
+# em vez de virar um chute. Medido com treino/avaliar.py em fotos de obra
+# (EPI real) e em video proprio (bone, sem EPI):
+#   margem 0.15     erros de bone vermelho como capacete: 7 -> 1 em 442
+#   cabeca >= 50px  alarmes falsos de capacete em obra: 4 -> 2
+#   tronco          o minimo de tamanho nao tirou nenhum erro, so gerava
+#                   "nao avaliado" na webcam, onde o tronco aparece pouco
+CLIP_MIN_HEAD_PX = 50
+CLIP_MIN_TORSO_PX = 0
+CLIP_MIN_MARGIN = 0.15
+
 # Fracao da caixa do EPI que precisa cair dentro da regiao da pessoa
 # (cabeca para capacete, tronco para colete) para ser atribuida a ela.
 PPE_MIN_OVERLAP = 0.40
@@ -130,6 +142,7 @@ _OVERRIDABLE = {
     "VEST_THRESH", "HELMET_THRESH",
     "EPI_METHOD", "PPE_MODEL_PATH", "PPE_CONF", "PPE_IMGSZ", "PPE_MIN_OVERLAP",
     "CLIP_MODEL", "CLIP_PRETRAINED",
+    "CLIP_MIN_HEAD_PX", "CLIP_MIN_TORSO_PX", "CLIP_MIN_MARGIN",
     "STABILIZE_WINDOW", "STABILIZE_RATIO", "TRACK_IOU", "TRACK_MAX_MISSING",
     "SYSTEM_TITLE", "SIDEBAR_WIDTH", "SHOW_ANALYSIS_ZONES",
     "HOST", "PORT", "STREAM_FPS", "JPEG_QUALITY",
